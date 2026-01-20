@@ -1,18 +1,20 @@
 package org.quarkus.customer.entities;
 
+import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.List;
 
 @Entity
 @Data
-public class CustomerEntity {
+@Getter
+@Setter
+public class Customer extends PanacheEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
-    private Long id;
     private String code;
     private String accountNumber;
     private String names;
@@ -22,6 +24,6 @@ public class CustomerEntity {
 
 
     @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private List<ProductEntity> productEntities = new ArrayList<>();
+    private List<Product> productEntities = new ArrayList<>();
 
 }

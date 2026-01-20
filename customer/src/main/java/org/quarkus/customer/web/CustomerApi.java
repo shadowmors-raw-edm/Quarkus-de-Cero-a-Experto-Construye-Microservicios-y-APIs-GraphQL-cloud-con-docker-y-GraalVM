@@ -2,30 +2,29 @@ package org.quarkus.customer.web;
 
 
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.smallrye.common.annotation.Blocking;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import io.quarkus.hibernate.reactive.panache.Panache;
+import io.quarkus.panache.common.Sort;
 import io.smallrye.mutiny.Uni;
-import io.vertx.mutiny.core.Vertx;
 import jakarta.inject.Inject;
-import jakarta.json.JsonArray;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
+import org.jboss.resteasy.reactive.RestPath;
 import org.quarkus.customer.consumer.JsonPlaceHolderClient;
-import org.quarkus.customer.entities.CustomerEntity;
-import org.quarkus.customer.entities.ProductEntity;
+import org.quarkus.customer.entities.Customer;
+import org.quarkus.customer.entities.Product;
 import org.quarkus.customer.repositories.CustomerRepository;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
+
+import static jakarta.ws.rs.core.Response.Status.NOT_FOUND;
 
 @Path("/customer")
 @Produces(MediaType.APPLICATION_JSON)
@@ -33,33 +32,36 @@ import java.util.stream.Collectors;
 @RegisterRestClient(configKey = "user-api")
 public class CustomerApi {
 
-    @Inject
-    Vertx vertx;
-
-    @Inject
-    CustomerRepository repository;
-
      @Inject
      @RestClient
     JsonPlaceHolderClient jsonPlaceHolderClient;
 
+     @Inject
+     CustomerRepository repository;
+
     @POST
     @Path("/save")
-    public CustomerEntity save(CustomerEntity customerEntity) {
-        repository.createCustomer(customerEntity);
-        return customerEntity;
+    public Uni<Response> save(Customer customer) {
+        return Panache.withTransaction(customer::persist)
+                .replaceWith(Response.ok(customer).status(Response.Status.CREATED)::build);
     }
 
     @GET
     @Path("/find-all")
-    public List<CustomerEntity> findAll() {
-        return repository.listCustomers();
+    public Uni<List<Customer>> findAll() {
+        return Customer.listAll(Sort.by("names"));
+    }
+
+    @GET
+    @Path("/find-all-repository")
+    public Uni<List<Customer>> findAllUsingRepository() {
+        return repository.listAll();
     }
 
     @GET
     @Path("/find-by/{id}")
-    public CustomerEntity findById(@PathParam("id") Long id) {
-        return repository.findCustomerById(id);
+    public Uni<Customer> findById(@PathParam("id") Long id) {
+        return Customer.findById(id);
     }
 
     /*@GET
@@ -84,7 +86,7 @@ public class CustomerApi {
     @GET
     @Path("/find-by/{id}/product")
     @Produces(MediaType.APPLICATION_JSON)
-    public Uni<CustomerEntity> findByIdProduct(@PathParam("id") Long id) {
+    public Uni<Customer> findByIdProduct(@PathParam("id") Long id) {
         return Uni.combine().all().unis(getCustomerReactive(id), getAllProducts())
                 .with((customer, externalProducts) -> {
                     if (customer.getProductEntities() == null || customer.getProductEntities().isEmpty()) {
@@ -92,12 +94,12 @@ public class CustomerApi {
                     }
 
                     // Indexa productos externos por id para O(1)
-                    Map<Long, ProductEntity> extById = externalProducts.stream()
-                            .collect(Collectors.toMap(ProductEntity::getId, Function.identity(), (a, b) -> a));
+                    Map<Long, Product> extById = externalProducts.stream()
+                            .collect(Collectors.toMap(Product::getId, Function.identity(), (a, b) -> a));
 
                     // Enriquecemos los productos del customer
                     customer.getProductEntities().forEach(p -> {
-                        ProductEntity ext = extById.get(p.getId());
+                        Product ext = extById.get(p.getId());
                         if (ext != null) {
                             p.setName(ext.getName());
                             p.setDescription(ext.getDescription());
@@ -112,33 +114,47 @@ public class CustomerApi {
 
     @PUT
     @Path("/update")
-    public CustomerEntity update(CustomerEntity customerEntity) {
-        repository.update(customerEntity);
-        return customerEntity;
+    public Uni<Response> update(@RestPath Long id, Customer c) {
+        if (c == null || c.getCode() == null) {
+            throw new WebApplicationException("Product code was not set on request.", HttpResponseStatus.UNPROCESSABLE_ENTITY.code());
+        }
+        return Panache
+                .withTransaction(() -> Customer.<Customer> findById(id)
+                        .onItem().ifNotNull().invoke(entity -> {
+                            entity.setNames(c.getNames());
+                            entity.setAccountNumber(c.getAccountNumber());
+                            entity.setCode(c.getCode());
+                        })
+                )
+                .onItem().ifNotNull().transform(entity -> Response.ok(entity).build())
+                .onItem().ifNull().continueWith(Response.ok().status(NOT_FOUND)::build);
     }
 
     @DELETE
     @Path("/delete/{id}")
-    public void deleteById(@PathParam("id") Long id) {
-        repository.delete(id);
+    public Uni<Response> deleteById(@PathParam("id") Long id) {
+        return Panache.withTransaction(() -> Customer.deleteById(id))
+                .map(deleted -> deleted
+                        ? Response.ok().status(Response.Status.NO_CONTENT).build()
+                        : Response.ok().status(NOT_FOUND).build());
     }
 
     @GET
     @Path("/product/{id}")
-    public Uni<ProductEntity> getProductById(@PathParam("id") Long id) {
+    public Uni<Product> getProductById(@PathParam("id") Long id) {
         return jsonPlaceHolderClient.getProductById(id);
     }
 
     @GET
     @Path("/stream")
-    public Uni<List<ProductEntity>> stream() {
+    public Uni<List<Product>> stream() {
         return jsonPlaceHolderClient.getAllProducts();
     }
 
-    private Uni<CustomerEntity> getCustomerReactive(Long id) {
+    private Uni<Customer> getCustomerReactive(Long id) {
 
-        CustomerEntity customerEntity = repository.findCustomerById(id);
-        Uni<CustomerEntity> item = Uni.createFrom().item(customerEntity);
+        Customer customer = (Customer) Customer.findById(id);
+        Uni<Customer> item = Uni.createFrom().item(customer);
         return item;
     }
 
@@ -168,7 +184,7 @@ public class CustomerApi {
     }*/
 
 
-    private Uni<List<ProductEntity>> getAllProducts() {
+    private Uni<List<Product>> getAllProducts() {
         return jsonPlaceHolderClient.getAllProducts()
                 .ifNoItem().after(Duration.ofSeconds(5)).fail()     // timeout lógico
                 .onFailure().invoke(t -> LOG.error("Error recuperando productos", t))

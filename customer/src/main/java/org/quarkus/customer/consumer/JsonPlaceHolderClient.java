@@ -4,7 +4,7 @@ import io.smallrye.mutiny.Uni;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
-import org.quarkus.customer.entities.ProductEntity;
+import org.quarkus.customer.entities.Product;
 
 import java.util.List;
 
@@ -16,8 +16,8 @@ public interface JsonPlaceHolderClient {
 
     @GET
     @Path("/{id}")
-    Uni<ProductEntity> getProductById(@PathParam("id") long id);
+    Uni<Product> getProductById(@PathParam("id") long id);
 
     @GET
-    Uni<List<ProductEntity>> getAllProducts();
+    Uni<List<Product>> getAllProducts();
 }

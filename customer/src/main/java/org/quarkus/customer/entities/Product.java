@@ -1,10 +1,12 @@
 package org.quarkus.customer.entities;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import io.quarkus.hibernate.reactive.panache.PanacheEntity;
 import jakarta.persistence.*;
 import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Data
@@ -14,10 +16,11 @@ import lombok.NoArgsConstructor;
 )
 @JsonIgnoreProperties({"customer"})
 @NoArgsConstructor
-public class ProductEntity {
+@Getter
+@Setter
+public class Product extends PanacheEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @Transient
     private Long id;
 
     @Column
@@ -35,6 +38,6 @@ public class ProductEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "customer_id")
-    private CustomerEntity customer;
+    private Customer customer;
 
 }
